@@ -1,13 +1,24 @@
 import os
+import io
 import json
 import secrets
 import numpy as np
+from datetime import datetime
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response, stream_with_context
 from tensorflow.keras.models import load_model
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from PIL import Image
 import tensorflow as tf
-import anthropic
+from groq import Groq
+from dotenv import load_dotenv
+
+# Import the enhanced report generator
+from report_generator import generate_enhanced_report
+
+load_dotenv()
+
+# Configure Groq
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
@@ -31,15 +42,6 @@ os.makedirs(STATIC_FOLDER, exist_ok=True)
 # Load model and class names globally
 model = None
 class_names = []
-
-# Anthropic client (reads ANTHROPIC_API_KEY from environment)
-_anthropic_client = None
-
-def get_anthropic_client():
-    global _anthropic_client
-    if _anthropic_client is None:
-        _anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    return _anthropic_client
 
 
 # ─── Model Loading ────────────────────────────────────────────────────────────
@@ -229,20 +231,58 @@ def result():
     return render_template('result.html', prediction=prediction, image_path=image_path)
 
 
+# ─── PDF REPORT ───────────────────────────────────────────────────────────────
+
+@app.route('/report')
+def report():
+    """Generate and download the enhanced PDF diagnosis report."""
+    prediction = session.get('prediction')
+    image_path = session.get('image_path')
+    
+    if not prediction:
+        return redirect(url_for('upload'))
+
+    # Prepare absolute path for the image (required by ReportLab)
+    abs_image_path = None
+    if image_path:
+        abs_image_path = os.path.join(BASE_DIR, 'static', image_path)
+
+    try:
+        # Generate the PDF using the enhanced generator
+        pdf_bytes = generate_enhanced_report(
+            plant=prediction['plant_type'],
+            condition=prediction['condition'],
+            confidence=prediction['confidence'],
+            image_path=abs_image_path
+        )
+        
+        # Create a clean filename
+        plant_fn = prediction['plant_type'].replace(' ', '_')
+        cond_fn = prediction['condition'].replace(' ', '_')
+        filename = f"PlantCare_Report_{plant_fn}_{cond_fn}.pdf"
+        
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        )
+
+    except ValueError as e:
+        # Fallback if the disease is not in report_generator.DISEASE_DATA
+        return f"Detailed report currently unavailable for this condition: {prediction['condition']}. Please check back later.", 404
+    except Exception as e:
+        return f"Error generating report: {str(e)}", 500
+
+
 # ─── AI CHATBOT ROUTES ────────────────────────────────────────────────────────
 
 @app.route('/learn', methods=['POST'])
 def learn():
-    """
-    Generate structured disease information panels (overview, prevention, future damage).
-    Returns JSON with three sections for the pop-up panels.
-    Uses the Anthropic API with tool_use to return structured JSON data.
-    """
     prediction = session.get('prediction')
     if not prediction:
         return jsonify({'error': 'No active prediction in session'}), 400
 
-    panel = request.json.get('panel', 'overview')  # overview | prevention | damage
+    panel = request.json.get('panel', 'overview')
     plant_context = build_plant_context(prediction)
 
     panel_prompts = {
@@ -284,14 +324,15 @@ def learn():
     prompt = panel_prompts.get(panel, panel_prompts['overview'])
 
     try:
-        client = get_anthropic_client()
-        message = client.messages.create(
-            model="claude-opus-4-5",
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
             max_tokens=1500,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
         )
-        content = message.content[0].text
+        content = response.choices[0].message.content
         return jsonify({'content': content, 'panel': panel})
 
     except Exception as e:
@@ -300,10 +341,6 @@ def learn():
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    """
-    Streaming SSE endpoint for the freeform chatbot conversation.
-    Receives conversation history and streams back Claude's response token by token.
-    """
     prediction = session.get('prediction')
     if not prediction:
         return jsonify({'error': 'No active prediction in session'}), 400
@@ -323,20 +360,24 @@ def chat():
         "Always relate answers back to their specific plant and situation."
     )
 
+    groq_messages = [{"role": "system", "content": system_with_context}] + messages
+
     def generate():
         try:
-            client = get_anthropic_client()
-            with client.messages.stream(
-                model="claude-opus-4-5",
+            stream = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
                 max_tokens=1024,
-                system=system_with_context,
-                messages=messages
-            ) as stream:
-                for text_chunk in stream.text_stream:
-                    # SSE format: data: <chunk>\n\n
-                    escaped = text_chunk.replace('\n', '\\n')
+                messages=groq_messages,
+                stream=True
+            )
+            for chunk in stream:
+                text = chunk.choices[0].delta.content
+                if text:
+                    escaped = text.replace('\n', '\\n')
                     yield f"data: {escaped}\n\n"
+
             yield "data: [DONE]\n\n"
+
         except Exception as e:
             yield f"data: [ERROR] {str(e)}\n\n"
 
