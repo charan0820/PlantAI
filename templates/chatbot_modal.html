@@ -1,0 +1,838 @@
+{# ============================================================
+   chatbot_modal.html  —  PlantCare AI Assistant
+   Include this at the bottom of result.html:
+     {% include 'chatbot_modal.html' %}
+   ============================================================ #}
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<!-- Marked.js for markdown rendering -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+
+<style>
+/* ── Design tokens ───────────────────────────────────────── */
+:root {
+  --soil:       #1a1208;
+  --bark:       #2e1f0e;
+  --moss:       #3a5c2e;
+  --leaf:       #4e8c3a;
+  --sprout:     #78c25e;
+  --dew:        #b8f0a0;
+  --cream:      #f5f0e8;
+  --amber:      #e8a830;
+  --rust:       #c0522a;
+  --mist:       rgba(255,255,255,0.06);
+  --glass:      rgba(255,255,255,0.10);
+  --radius-lg:  18px;
+  --radius-md:  12px;
+  --radius-sm:  8px;
+  --shadow-deep: 0 32px 80px rgba(0,0,0,0.55), 0 8px 24px rgba(0,0,0,0.35);
+  --shadow-card: 0 4px 20px rgba(0,0,0,0.25);
+  --transition:  0.22s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ── Trigger button ──────────────────────────────────────── */
+#plantcare-trigger {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px 14px 18px;
+  background: linear-gradient(135deg, var(--moss), var(--leaf));
+  color: var(--dew);
+  border: none;
+  border-radius: 50px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(78,140,58,0.45), 0 2px 8px rgba(0,0,0,0.3);
+  transition: var(--transition);
+  letter-spacing: 0.01em;
+}
+#plantcare-trigger:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(78,140,58,0.55), 0 4px 12px rgba(0,0,0,0.3);
+  background: linear-gradient(135deg, var(--leaf), var(--sprout));
+}
+#plantcare-trigger .trigger-icon {
+  font-size: 20px;
+  animation: leaf-sway 3s ease-in-out infinite;
+}
+@keyframes leaf-sway {
+  0%, 100% { transform: rotate(-5deg); }
+  50%       { transform: rotate(5deg);  }
+}
+#plantcare-trigger .trigger-pulse {
+  width: 8px; height: 8px;
+  background: var(--dew);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+  flex-shrink: 0;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.7); }
+}
+
+/* ── Backdrop ────────────────────────────────────────────── */
+#plantcare-backdrop {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(10,15,8,0.72);
+  backdrop-filter: blur(6px);
+  z-index: 1001;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+#plantcare-backdrop.open { opacity: 1; }
+
+/* ── Main modal shell ────────────────────────────────────── */
+#plantcare-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1002;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+#plantcare-modal.open { display: flex; }
+
+.pc-shell {
+  width: 100%;
+  max-width: 940px;
+  max-height: 90vh;
+  background: linear-gradient(160deg, var(--bark) 0%, var(--soil) 100%);
+  border: 1px solid rgba(120,194,94,0.18);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-deep);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modal-rise 0.35s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes modal-rise {
+  from { opacity: 0; transform: translateY(40px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+.pc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 26px;
+  background: linear-gradient(90deg, var(--moss), rgba(58,92,46,0.5));
+  border-bottom: 1px solid rgba(120,194,94,0.15);
+  flex-shrink: 0;
+}
+.pc-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pc-logo {
+  width: 38px; height: 38px;
+  background: var(--sprout);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  box-shadow: 0 2px 10px rgba(120,194,94,0.4);
+}
+.pc-header-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 18px;
+  color: var(--dew);
+  font-weight: 700;
+}
+.pc-header-subtitle {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  color: rgba(184,240,160,0.65);
+  margin-top: 1px;
+}
+.pc-close {
+  background: var(--mist);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--dew);
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+  transition: var(--transition);
+  line-height: 1;
+}
+.pc-close:hover { background: rgba(192,82,42,0.35); border-color: var(--rust); }
+
+/* ── Diagnosis badge ─────────────────────────────────────── */
+.pc-diagnosis-badge {
+  margin: 0 26px;
+  padding: 12px 18px;
+  background: var(--mist);
+  border: 1px solid rgba(120,194,94,0.12);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  margin-top: 16px;
+}
+.pc-badge-icon {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+.pc-badge-info {
+  flex: 1;
+  min-width: 0;
+}
+.pc-badge-plant {
+  font-family: 'Playfair Display', serif;
+  font-size: 15px;
+  color: var(--cream);
+  font-weight: 700;
+}
+.pc-badge-condition {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  color: rgba(245,240,232,0.6);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-badge-conf {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  background: rgba(120,194,94,0.15);
+  color: var(--sprout);
+  border-radius: 20px;
+  border: 1px solid rgba(120,194,94,0.25);
+  flex-shrink: 0;
+}
+
+/* ── Tab navigation ──────────────────────────────────────── */
+.pc-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 16px 26px 0;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.pc-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-bottom: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: rgba(245,240,232,0.5);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pc-tab:hover {
+  color: var(--dew);
+  background: var(--mist);
+}
+.pc-tab.active {
+  background: rgba(58,92,46,0.4);
+  color: var(--sprout);
+  border-color: rgba(120,194,94,0.25);
+}
+.pc-tab .tab-icon { font-size: 15px; }
+
+/* ── Tab content area ────────────────────────────────────── */
+.pc-content {
+  flex: 1;
+  overflow: hidden;
+  border-top: 1px solid rgba(120,194,94,0.12);
+  position: relative;
+  min-height: 0;
+}
+
+/* ── Info panels (overview / prevention / damage) ────────── */
+.pc-panel {
+  display: none;
+  height: 100%;
+  overflow-y: auto;
+  padding: 24px 26px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--moss) transparent;
+}
+.pc-panel.active { display: block; }
+
+.pc-panel-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  height: 240px;
+  color: rgba(245,240,232,0.5);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+}
+.pc-spinner {
+  width: 40px; height: 40px;
+  border: 3px solid rgba(120,194,94,0.15);
+  border-top-color: var(--sprout);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Markdown content styling */
+.pc-panel-body { color: var(--cream); font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.75; }
+.pc-panel-body h1, .pc-panel-body h2 { font-family: 'Playfair Display', serif; color: var(--dew); margin: 20px 0 10px; font-size: 17px; }
+.pc-panel-body h3 { color: var(--sprout); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; margin: 16px 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+.pc-panel-body strong { color: var(--dew); font-weight: 600; }
+.pc-panel-body em { color: var(--amber); font-style: italic; }
+.pc-panel-body ul, .pc-panel-body ol { padding-left: 20px; margin: 8px 0; }
+.pc-panel-body li { margin: 5px 0; color: rgba(245,240,232,0.85); }
+.pc-panel-body p { margin: 8px 0; }
+.pc-panel-body code { background: rgba(120,194,94,0.12); color: var(--sprout); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+.pc-panel-body hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 18px 0; }
+.pc-panel-body blockquote { border-left: 3px solid var(--sprout); margin: 10px 0; padding: 8px 14px; background: rgba(120,194,94,0.06); color: rgba(245,240,232,0.75); border-radius: 0 6px 6px 0; }
+
+/* ── Chat panel ──────────────────────────────────────────── */
+#pc-panel-chat {
+  display: none;
+  height: 100%;
+  flex-direction: column;
+}
+#pc-panel-chat.active { display: flex; }
+
+.pc-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--moss) transparent;
+  min-height: 0;
+}
+
+.pc-msg {
+  display: flex;
+  gap: 10px;
+  animation: msg-in 0.2s ease both;
+}
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pc-msg.user { flex-direction: row-reverse; }
+
+.pc-msg-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.pc-msg.ai .pc-msg-avatar    { background: linear-gradient(135deg, var(--moss), var(--leaf)); }
+.pc-msg.user .pc-msg-avatar  { background: rgba(232,168,48,0.2); border: 1px solid rgba(232,168,48,0.3); }
+
+.pc-msg-bubble {
+  max-width: 78%;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+.pc-msg.ai .pc-msg-bubble {
+  background: rgba(58,92,46,0.25);
+  border: 1px solid rgba(120,194,94,0.12);
+  color: var(--cream);
+  border-radius: 4px var(--radius-md) var(--radius-md) var(--radius-md);
+}
+.pc-msg.user .pc-msg-bubble {
+  background: rgba(232,168,48,0.12);
+  border: 1px solid rgba(232,168,48,0.2);
+  color: var(--cream);
+  border-radius: var(--radius-md) 4px var(--radius-md) var(--radius-md);
+  text-align: right;
+}
+
+/* Inline markdown inside chat bubbles */
+.pc-msg-bubble h1, .pc-msg-bubble h2, .pc-msg-bubble h3 { color: var(--dew); margin: 8px 0 4px; font-family: 'Playfair Display', serif; font-size: 15px; }
+.pc-msg-bubble strong { color: var(--dew); }
+.pc-msg-bubble em { color: var(--amber); }
+.pc-msg-bubble ul, .pc-msg-bubble ol { padding-left: 18px; margin: 4px 0; }
+.pc-msg-bubble li { margin: 3px 0; }
+.pc-msg-bubble code { background: rgba(120,194,94,0.15); color: var(--sprout); padding: 1px 5px; border-radius: 3px; }
+.pc-msg-bubble p { margin: 4px 0; }
+
+.pc-typing-indicator {
+  display: flex; gap: 4px; align-items: center; padding: 4px 0;
+}
+.pc-typing-indicator span {
+  width: 7px; height: 7px;
+  background: var(--sprout);
+  border-radius: 50%;
+  animation: typing 1.2s infinite;
+}
+.pc-typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.pc-typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%           { transform: translateY(-5px); opacity: 1; }
+}
+
+/* Quick prompts */
+.pc-quick-prompts {
+  padding: 0 26px 14px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pc-quick-btn {
+  padding: 7px 14px;
+  background: var(--mist);
+  border: 1px solid rgba(120,194,94,0.18);
+  border-radius: 20px;
+  color: rgba(184,240,160,0.8);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.pc-quick-btn:hover {
+  background: rgba(78,140,58,0.2);
+  color: var(--dew);
+  border-color: var(--sprout);
+}
+
+/* Chat input */
+.pc-chat-input-area {
+  padding: 14px 26px 18px;
+  border-top: 1px solid rgba(120,194,94,0.1);
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.15);
+}
+.pc-chat-input {
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(120,194,94,0.18);
+  border-radius: var(--radius-md);
+  color: var(--cream);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  padding: 11px 16px;
+  resize: none;
+  outline: none;
+  transition: border-color var(--transition);
+  max-height: 100px;
+  line-height: 1.5;
+}
+.pc-chat-input::placeholder { color: rgba(245,240,232,0.3); }
+.pc-chat-input:focus { border-color: rgba(120,194,94,0.45); background: rgba(255,255,255,0.08); }
+.pc-send-btn {
+  width: 44px; height: 44px;
+  background: linear-gradient(135deg, var(--moss), var(--leaf));
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--dew);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: var(--transition);
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+.pc-send-btn:hover:not(:disabled) { background: linear-gradient(135deg, var(--leaf), var(--sprout)); transform: translateY(-1px); }
+.pc-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .pc-shell { max-height: 95vh; border-radius: 12px; }
+  .pc-msg-bubble { max-width: 90%; }
+  #plantcare-trigger { bottom: 16px; right: 16px; padding: 12px 16px 12px 14px; font-size: 14px; }
+}
+</style>
+
+<!-- ── Trigger Button ── -->
+<button id="plantcare-trigger" onclick="PlantCareAI.open()">
+  <span class="trigger-icon">🌿</span>
+  Ask PlantCare AI
+  <span class="trigger-pulse"></span>
+</button>
+
+<!-- ── Backdrop ── -->
+<div id="plantcare-backdrop" onclick="PlantCareAI.close()"></div>
+
+<!-- ── Modal ── -->
+<div id="plantcare-modal" role="dialog" aria-modal="true" aria-label="PlantCare AI Assistant">
+  <div class="pc-shell">
+
+    <!-- Header -->
+    <div class="pc-header">
+      <div class="pc-header-left">
+        <div class="pc-logo">🌱</div>
+        <div>
+          <div class="pc-header-title">PlantCare AI Assistant</div>
+          <div class="pc-header-subtitle">Powered by Claude · Plant Pathology Expert</div>
+        </div>
+      </div>
+      <button class="pc-close" onclick="PlantCareAI.close()" aria-label="Close">✕</button>
+    </div>
+
+    <!-- Diagnosis badge — populated by JS from Jinja data -->
+    <div class="pc-diagnosis-badge">
+      <div class="pc-badge-icon" id="pc-badge-icon">🌿</div>
+      <div class="pc-badge-info">
+        <div class="pc-badge-plant" id="pc-badge-plant">{{ prediction.plant_type }}</div>
+        <div class="pc-badge-condition" id="pc-badge-condition">{{ prediction.condition }}</div>
+      </div>
+      <div class="pc-badge-conf">{{ prediction.confidence }}% confidence</div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="pc-tabs" role="tablist">
+      <button class="pc-tab active" data-tab="overview"   onclick="PlantCareAI.switchTab('overview')"   role="tab">
+        <span class="tab-icon">🔬</span> Overview
+      </button>
+      <button class="pc-tab"        data-tab="prevention" onclick="PlantCareAI.switchTab('prevention')" role="tab">
+        <span class="tab-icon">🛡️</span> Prevention
+      </button>
+      <button class="pc-tab"        data-tab="damage"     onclick="PlantCareAI.switchTab('damage')"     role="tab">
+        <span class="tab-icon">⚠️</span> Future Risks
+      </button>
+      <button class="pc-tab"        data-tab="chat"       onclick="PlantCareAI.switchTab('chat')"       role="tab">
+        <span class="tab-icon">💬</span> Chat
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="pc-content">
+
+      <!-- Overview panel -->
+      <div class="pc-panel active" id="pc-panel-overview">
+        <div class="pc-panel-loading" id="pc-overview-loading">
+          <div class="pc-spinner"></div>
+          <span>Analysing disease classification…</span>
+        </div>
+        <div class="pc-panel-body" id="pc-overview-body" style="display:none"></div>
+      </div>
+
+      <!-- Prevention panel -->
+      <div class="pc-panel" id="pc-panel-prevention">
+        <div class="pc-panel-loading" id="pc-prevention-loading">
+          <div class="pc-spinner"></div>
+          <span>Generating prevention guide…</span>
+        </div>
+        <div class="pc-panel-body" id="pc-prevention-body" style="display:none"></div>
+      </div>
+
+      <!-- Damage / Risk panel -->
+      <div class="pc-panel" id="pc-panel-damage">
+        <div class="pc-panel-loading" id="pc-damage-loading">
+          <div class="pc-spinner"></div>
+          <span>Assessing risk scenarios…</span>
+        </div>
+        <div class="pc-panel-body" id="pc-damage-body" style="display:none"></div>
+      </div>
+
+      <!-- Chat panel -->
+      <div id="pc-panel-chat">
+        <div class="pc-messages" id="pc-messages">
+          <!-- Welcome message injected by JS -->
+        </div>
+
+        <!-- Quick prompts -->
+        <div class="pc-quick-prompts" id="pc-quick-prompts">
+          <button class="pc-quick-btn" onclick="PlantCareAI.sendQuick(this)">How serious is this?</button>
+          <button class="pc-quick-btn" onclick="PlantCareAI.sendQuick(this)">Organic treatment options?</button>
+          <button class="pc-quick-btn" onclick="PlantCareAI.sendQuick(this)">Will my other plants catch it?</button>
+          <button class="pc-quick-btn" onclick="PlantCareAI.sendQuick(this)">Signs of recovery to look for?</button>
+        </div>
+
+        <!-- Input -->
+        <div class="pc-chat-input-area">
+          <textarea
+            id="pc-chat-input"
+            class="pc-chat-input"
+            placeholder="Ask anything about this diagnosis…"
+            rows="1"
+            onkeydown="PlantCareAI.handleKey(event)"
+            oninput="PlantCareAI.autoResize(this)"
+          ></textarea>
+          <button class="pc-send-btn" id="pc-send-btn" onclick="PlantCareAI.send()" aria-label="Send">➤</button>
+        </div>
+      </div>
+
+    </div><!-- /.pc-content -->
+  </div><!-- /.pc-shell -->
+</div><!-- /#plantcare-modal -->
+
+<script>
+(function () {
+  // ── State ──────────────────────────────────────────────────
+  const state = {
+    open: false,
+    activeTab: 'overview',
+    loaded: { overview: false, prevention: false, damage: false },
+    chatHistory: [],   // [{role, content}]
+    streaming: false,
+  };
+
+  // Badge icon: healthy vs diseased
+  const isHealthy = {{ prediction.is_healthy | tojson }};
+  document.getElementById('pc-badge-icon').textContent = isHealthy ? '✅' : '🔴';
+
+  // ── Public API ─────────────────────────────────────────────
+  window.PlantCareAI = {
+
+    open() {
+      document.getElementById('plantcare-backdrop').style.display = 'block';
+      document.getElementById('plantcare-modal').style.display    = 'flex';
+      setTimeout(() => {
+        document.getElementById('plantcare-backdrop').classList.add('open');
+        document.getElementById('plantcare-modal').classList.add('open');
+      }, 10);
+      state.open = true;
+      if (!state.loaded.overview) this._fetchPanel('overview');
+      if (!state.chatHistory.length) this._initChat();
+    },
+
+    close() {
+      document.getElementById('plantcare-backdrop').classList.remove('open');
+      document.getElementById('plantcare-modal').classList.remove('open');
+      setTimeout(() => {
+        document.getElementById('plantcare-backdrop').style.display = 'none';
+        document.getElementById('plantcare-modal').style.display    = 'none';
+      }, 300);
+      state.open = false;
+    },
+
+    switchTab(tab) {
+      // Update tab buttons
+      document.querySelectorAll('.pc-tab').forEach(el => {
+        el.classList.toggle('active', el.dataset.tab === tab);
+      });
+      // Update panels
+      document.querySelectorAll('.pc-panel').forEach(el => el.classList.remove('active'));
+      document.getElementById('pc-panel-chat').classList.remove('active');
+
+      if (tab === 'chat') {
+        document.getElementById('pc-panel-chat').classList.add('active');
+        setTimeout(() => this._scrollMessages(), 50);
+      } else {
+        document.getElementById(`pc-panel-${tab}`).classList.add('active');
+        if (!state.loaded[tab]) this._fetchPanel(tab);
+      }
+      state.activeTab = tab;
+    },
+
+    // ── Panel loader ─────────────────────────────────────────
+    _fetchPanel(panel) {
+      const loadingEl = document.getElementById(`pc-${panel}-loading`);
+      const bodyEl    = document.getElementById(`pc-${panel}-body`);
+      loadingEl.style.display = 'flex';
+      bodyEl.style.display    = 'none';
+
+      fetch('/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ panel })
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) {
+            bodyEl.innerHTML = `<p style="color:var(--rust)">⚠️ ${data.error}</p>`;
+          } else {
+            bodyEl.innerHTML = marked.parse(data.content);
+          }
+          loadingEl.style.display = 'none';
+          bodyEl.style.display    = 'block';
+          state.loaded[panel]     = true;
+        })
+        .catch(err => {
+          loadingEl.style.display = 'none';
+          bodyEl.innerHTML = `<p style="color:var(--rust)">⚠️ Failed to load content. Please try again.</p>`;
+          bodyEl.style.display = 'block';
+        });
+    },
+
+    // ── Chat ─────────────────────────────────────────────────
+    _initChat() {
+      const plant     = document.getElementById('pc-badge-plant').textContent;
+      const condition = document.getElementById('pc-badge-condition').textContent;
+      const welcome   = isHealthy
+        ? `Hello! 🌿 I've reviewed the analysis — your **${plant}** looks **healthy**!\n\nI can help you with care tips, what warning signs to watch for, and how to keep it thriving. What would you like to know?`
+        : `Hello! 🔬 I've analysed the diagnosis — your **${plant}** has been identified with **${condition}**.\n\nI can explain the disease in detail, walk you through treatment options, and help you protect your other plants. Ask me anything!`;
+
+      this._appendMessage('ai', welcome);
+    },
+
+    _initChatHistory(content) {
+      // Seed hidden system-side context (not shown to user)
+      // We DON'T add AI greeting to history — it's display-only
+    },
+
+    _appendMessage(role, content) {
+      const messagesEl = document.getElementById('pc-messages');
+      const div = document.createElement('div');
+      div.className = `pc-msg ${role}`;
+
+      const avatar = document.createElement('div');
+      avatar.className = 'pc-msg-avatar';
+      avatar.textContent = role === 'ai' ? '🌿' : '👤';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'pc-msg-bubble';
+      bubble.innerHTML = marked.parse(content);
+
+      div.appendChild(avatar);
+      div.appendChild(bubble);
+      messagesEl.appendChild(div);
+      this._scrollMessages();
+      return bubble;
+    },
+
+    _appendStreamingMessage() {
+      const messagesEl = document.getElementById('pc-messages');
+      const div = document.createElement('div');
+      div.className = 'pc-msg ai';
+      div.id = 'pc-streaming-msg';
+
+      const avatar = document.createElement('div');
+      avatar.className = 'pc-msg-avatar';
+      avatar.textContent = '🌿';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'pc-msg-bubble';
+      bubble.id = 'pc-streaming-bubble';
+      bubble.innerHTML = '<div class="pc-typing-indicator"><span></span><span></span><span></span></div>';
+
+      div.appendChild(avatar);
+      div.appendChild(bubble);
+      messagesEl.appendChild(div);
+      this._scrollMessages();
+      return bubble;
+    },
+
+    _scrollMessages() {
+      const el = document.getElementById('pc-messages');
+      el.scrollTop = el.scrollHeight;
+    },
+
+    sendQuick(btn) {
+      const text = btn.textContent.trim();
+      document.getElementById('pc-quick-prompts').style.display = 'none';
+      document.getElementById('pc-chat-input').value = text;
+      this.send();
+    },
+
+    handleKey(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.send();
+      }
+    },
+
+    autoResize(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+    },
+
+    send() {
+      if (state.streaming) return;
+      const inputEl = document.getElementById('pc-chat-input');
+      const text = inputEl.value.trim();
+      if (!text) return;
+
+      // Hide quick prompts permanently once user starts chatting
+      document.getElementById('pc-quick-prompts').style.display = 'none';
+
+      // Add user message
+      this._appendMessage('user', text);
+      state.chatHistory.push({ role: 'user', content: text });
+      inputEl.value = '';
+      inputEl.style.height = 'auto';
+      document.getElementById('pc-send-btn').disabled = true;
+      state.streaming = true;
+
+      // Start streaming
+      const bubble = this._appendStreamingMessage();
+      let accumulated = '';
+
+      fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: state.chatHistory })
+      })
+        .then(response => {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+
+          const processChunk = ({ done, value }) => {
+            if (done) {
+              // Finalise
+              state.chatHistory.push({ role: 'assistant', content: accumulated });
+              bubble.innerHTML = marked.parse(accumulated);
+              state.streaming = false;
+              document.getElementById('pc-send-btn').disabled = false;
+              this._scrollMessages();
+              return;
+            }
+
+            const raw = decoder.decode(value, { stream: true });
+            const lines = raw.split('\n');
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const chunk = line.slice(6);
+              if (chunk === '[DONE]') return;
+              if (chunk.startsWith('[ERROR]')) {
+                bubble.innerHTML = `<span style="color:var(--rust)">${chunk}</span>`;
+                state.streaming = false;
+                document.getElementById('pc-send-btn').disabled = false;
+                return;
+              }
+              // Unescape newlines sent as \n
+              accumulated += chunk.replace(/\\n/g, '\n');
+              bubble.innerHTML = marked.parse(accumulated) +
+                '<span style="opacity:0.5;animation:pulse 1s infinite">▍</span>';
+              this._scrollMessages();
+            }
+            return reader.read().then(processChunk);
+          };
+
+          return reader.read().then(processChunk);
+        })
+        .catch(err => {
+          bubble.innerHTML = `<span style="color:var(--rust)">⚠️ Connection error. Please try again.</span>`;
+          state.streaming = false;
+          document.getElementById('pc-send-btn').disabled = false;
+        });
+    }
+  };
+
+  // Close on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && state.open) PlantCareAI.close();
+  });
+})();
+</script>

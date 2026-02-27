@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
+{% include 'chatbot_modal.html' %}
+
 <body>
     <!-- Navbar -->
     <nav class="navbar">
@@ -137,5 +139,7 @@
         </div>
     </footer>
 </body>
+
+{% include 'chatbot_modal.html' %}
 
 </html>
